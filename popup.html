@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CDN/WAF Detector</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+
+  <header class="app-header">
+    <div class="header-left">
+      <svg class="logo-mark" width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+        <circle cx="9" cy="9" r="8" stroke="currentColor" stroke-width="1.5"/>
+        <circle cx="9" cy="9" r="4" stroke="currentColor" stroke-width="1.2"/>
+        <circle cx="9" cy="9" r="1.5" fill="currentColor"/>
+        <line x1="9" y1="1" x2="9" y2="4" stroke="currentColor" stroke-width="1.5"/>
+        <line x1="9" y1="14" x2="9" y2="17" stroke="currentColor" stroke-width="1.5"/>
+        <line x1="1" y1="9" x2="4" y2="9" stroke="currentColor" stroke-width="1.5"/>
+        <line x1="14" y1="9" x2="17" y2="9" stroke="currentColor" stroke-width="1.5"/>
+      </svg>
+      <h1>CDN / WAF Detector</h1>
+    </div>
+    <span class="version-tag">v8.1</span>
+  </header>
+
+  <section class="input-section">
+    <div class="input-row">
+      <div class="input-wrap">
+        <span class="input-prefix" aria-hidden="true">⌕</span>
+        <input id="domain" type="text" placeholder="example.com or 1.2.3.4" autocomplete="off" spellcheck="false">
+      </div>
+      <button id="scan" type="button">Scan</button>
+      <button id="rescan" class="btn-icon" type="button" title="Force re-scan (bypass cache)" aria-label="Force re-scan">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+          <path d="M13 2.5A6.5 6.5 0 1 0 13 11.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M10 1L13 2.5L11 5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <button id="history" class="btn-icon" type="button" title="Scan history" aria-label="Scan history">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+          <circle cx="7" cy="7" r="6" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M7 4V7L9 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+  </section>
+
+  <div id="status-bar" class="status-bar">
+    <span id="status-text" class="status-idle">Ready — enter a domain above</span>
+    <span id="cached-badge" class="cached-badge" hidden>cached</span>
+  </div>
+
+  <div id="progress" hidden>
+    <div class="progress-track">
+      <div id="pbar" class="progress-fill"></div>
+    </div>
+    <div class="progress-meta">
+      <span id="pct" class="pct-text">0%</span>
+      <span id="activity" class="activity-text">Starting…</span>
+    </div>
+  </div>
+
+  <section id="results"></section>
+
+</div>
+<script src="popup.js"></script>
+</body>
+</html>
