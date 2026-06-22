@@ -55,6 +55,13 @@ const PROBE_CONCURRENCY = 6;
 // cache entries (which may reflect outdated logic) are invalidated automatically.
 const ENGINE_VERSION = 2;
 
+// rangesReady is a Promise that resolves once IP-range lists have been loaded
+// from cache (or fetched fresh). It is assigned once loadCachedRanges() is
+// defined further below. performScan() always awaits it so IP-signal scoring
+// never runs before the ranges are available, even on a cold service-worker
+// wake-up where the assignment happens before any scan can be triggered.
+let rangesReady;   // assigned at module init after loadCachedRanges() is defined
+
 // A lightweight hash of the active provider set + engine version. Cache
 // entries are keyed against this so that loading new/updated provider
 // files (different probe count, different ids) naturally busts stale cache
@@ -1285,7 +1292,45 @@ try {
   });
 } catch { /* webRequest unavailable — ambient mode simply won't activate */ }
 
+// ── Firefox TLS intel via webRequest.getSecurityInfo() ────────
+// This API exists only on Firefox; it requires the (MV2-only)
+// "webRequestBlocking" permission on Chrome, which is not available in
+// MV3. We feature-detect it so the block is completely inert on Chrome/Edge.
+// "blocking" mode is ONLY requested on Firefox via the `browser` namespace;
+// using `chrome.webRequest` here (without blocking) would be a no-op anyway.
+try {
+  if (typeof browser !== 'undefined' && typeof browser.webRequest?.getSecurityInfo === 'function') {
+    browser.webRequest.onHeadersReceived.addListener(
+      async details => {
+        try {
+          const info = await browser.webRequest.getSecurityInfo(
+            details.requestId, { certificateChain: true }
+          );
+          if (info.state === 'secure' || info.state === 'weak') {
+            tlsIntelByRequestId.set(details.url, {
+              protocol:       info.protocolVersion,
+              cipher:         info.cipherSuite,
+              certSubject:    info.certificates?.[0]?.subject || null,
+              certIssuer:     info.certificates?.[0]?.issuer  || null,
+              certSha256:     info.certificates?.[0]?.fingerprint?.sha256 || null,
+              ech:            !!info.usedEch,
+              weaknessReasons: info.weaknessReasons || [],
+            });
+          }
+        } catch {}
+        return {};
+      },
+      { urls: ['<all_urls>'] },
+      ['blocking']   // valid on Firefox MV3 when accessed via `browser.*`
+    );
+  }
+} catch { /* not Firefox — silently inert */ }
 
+// Assign now that loadCachedRanges() is defined. Any scan triggered before
+// this resolves will correctly await it — no race condition possible because
+// the first scan can only be triggered by a user action, which comes after
+// the full script has been evaluated.
+rangesReady = loadCachedRanges().catch(() => {});
 
 // ── Port listener (progress streaming) ───────────────────────
 chrome.runtime.onConnect.addListener(port => {
