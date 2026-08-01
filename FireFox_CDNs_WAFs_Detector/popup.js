@@ -1349,6 +1349,11 @@ function renderDetail(result, pid) {
 
   const signals = pv.signals || {};
   const verdict = pv.verdict  || { score: 0, label: 'Unlikely', detected: false };
+  // Needed by the crowd-report submit handlers further below, and by the
+  // tab-correlation lookup — declared here once, at the top, rather than
+  // wherever happened to be convenient, so there's no ambiguity about
+  // whether it's initialized yet at each call site.
+  const domain = domainInput.value.trim();
 
   // Which provider "owns" any unrecognized headers is fundamentally a guess —
   // a header could belong to the CDN/WAF edge, the origin app, or something
@@ -1436,7 +1441,7 @@ function renderDetail(result, pid) {
       ${(pid !== topProviderId && result.unknownHeaders?.length)
         ? `<div class="breakdown-note">This scan's ${result.unknownHeaders.length} unrecognized header${result.unknownHeaders.length > 1 ? 's are' : ' is'} shown for reporting on <strong>${escHtml(PROVIDER_UI[topProviderId]?.name || topProviderId)}</strong>'s page instead — the most confidently detected provider for this domain. A header can't be reliably attributed to more than one provider, so it's only offered there.</div>`
         : (result.unknownHeaders?.length)
-        ? `<div class="breakdown-note">This scan saw ${result.unknownHeaders.length} header${result.unknownHeaders.length > 1 ? 's' : ''} no provider recognizes yet. These may belong to ${escHtml(ui.name)}'s edge layer — or just as easily to the origin application itself. Only report a header here if you have real reason to think it's actually part of ${escHtml(ui.name)}'s infrastructure (only sent if crowd reporting is enabled in Settings):</div>
+        ? `<div class="breakdown-note">This scan saw ${result.unknownHeaders.length} header${result.unknownHeaders.length > 1 ? 's' : ''} no provider recognizes yet. These may belong to ${escHtml(ui.name)}'s edge layer — or just as easily to the origin application itself. Only report a header here if you have real reason to think it's actually part of ${escHtml(ui.name)}'s infrastructure. Reporting sends this domain (${escHtml(domain)}) along with it, so it can be cross-checked against other domains (only sent if crowd reporting is enabled in Settings):</div>
            <div style="display:flex;flex-wrap:wrap;gap:6px;margin:8px 0">
            ${result.unknownHeaders.map(h => `<button class="link-btn unknown-header-btn" data-header="${escHtml(h)}">📋 ${escHtml(h)}</button>`).join('')}
            </div>`
@@ -1452,7 +1457,7 @@ function renderDetail(result, pid) {
   resultsEl.querySelectorAll('.unknown-header-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const header = btn.dataset.header;
-      chrome.runtime.sendMessage({ action: 'submitCrowdReport', providerId: pid, notes: `Unrecognized header: ${header}` }, res => {
+      chrome.runtime.sendMessage({ action: 'submitCrowdReport', providerId: pid, notes: `Unrecognized header: ${header}`, domain }, res => {
         const resultEl = document.getElementById('crowdSubmitResult');
         if (resultEl) resultEl.innerHTML = `<div class="breakdown-note" style="margin-top:6px">✓ Reported "${escHtml(header)}" (if crowd reporting is enabled in Settings).</div>`;
         btn.disabled = true;
@@ -1466,7 +1471,6 @@ function renderDetail(result, pid) {
   });
 
   // Load tab correlation async
-  const domain = domainInput.value.trim();
   chrome.runtime.sendMessage({ action: 'getTabCorrelation', domain }, res => {
     const panel = document.getElementById('tabCorrelationPanel');
     if (!panel) return;
@@ -1508,7 +1512,7 @@ function renderDetail(result, pid) {
   document.getElementById('crowdSubmitBtn').addEventListener('click', () => {
     const note = document.getElementById('crowdNoteInput').value.trim();
     if (!note) return;
-    chrome.runtime.sendMessage({ action: 'submitCrowdReport', providerId: pid, notes: note }, () => {
+    chrome.runtime.sendMessage({ action: 'submitCrowdReport', providerId: pid, notes: note, domain }, () => {
       document.getElementById('crowdNoteInput').value = '';
       const resultEl = document.getElementById('crowdSubmitResult');
       if (resultEl) resultEl.innerHTML = '<div class="breakdown-note" style="margin-top:6px">✓ Sent (if crowd reporting is enabled in Settings).</div>';
@@ -1530,6 +1534,7 @@ const appState = {
   activePort: null,
   lastResult: null,
   lastCached: false,
+  scanWatchdog: null, // timer id — see doScan(); catches a scan that never sends a first message
 };
 
 function setUiIdle() {
@@ -1537,6 +1542,7 @@ function setUiIdle() {
   scanBtn.disabled       = false;
   rescanBtn.disabled     = false;
   showProgress(false);
+  if (appState.scanWatchdog) { clearTimeout(appState.scanWatchdog); appState.scanWatchdog = null; }
 }
 
 function resetScanState() {
@@ -1566,7 +1572,28 @@ function doScan(domain, forceRefresh) {
   const port = chrome.runtime.connect({ name: 'scan' });
   appState.activePort = port;
 
+  // Watchdog: if NOTHING arrives from the port within SCAN_WATCHDOG_MS —
+  // no progress tick, no result, no error — treat it as stuck rather than
+  // leaving the UI on "Connecting…" forever. This can happen if the
+  // service worker dies at just the wrong moment (between the port
+  // connecting and it sending its first message) without onDisconnect
+  // firing promptly, which is the "stuck at Connecting 0%" symptom this
+  // guards against even without knowing the exact underlying trigger.
+  const SCAN_WATCHDOG_MS = 25000;
+  const armWatchdog = () => {
+    if (appState.scanWatchdog) clearTimeout(appState.scanWatchdog);
+    appState.scanWatchdog = setTimeout(() => {
+      if (appState.activePort !== port) return; // a newer scan already took over
+      try { port.disconnect(); } catch {}
+      setUiIdle();
+      resetScanState();
+      setStatus('Scan stalled with no response — try again');
+    }, SCAN_WATCHDOG_MS);
+  };
+  armWatchdog();
+
   port.onMessage.addListener(msg => {
+    armWatchdog(); // any message at all means it's alive — push the deadline out
     if (msg.type === 'progress') {
       updateProgress(msg.pct, msg.activity);
 
@@ -1800,7 +1827,8 @@ function renderSettings(settings) {
       <div class="settings-section-title">Crowd-sourced signatures (on by default)</div>
       <div class="settings-row">
         <span class="settings-label">Enable reporting
-          <span class="settings-hint">Every scan automatically checks for response headers no provider recognizes yet, and surfaces them as one-click "report this?" buttons in each detected provider's detail view — no need to notice or type anything by hand. Sends only a provider ID + the header name or a short note — never your domain or IP. On by default, pointed at the maintainer's own deployed Worker; turn this off or point it at your own endpoint (see /worker/README.md) any time below.</span>
+          <span class="settings-hint">Every scan automatically checks for response headers no provider recognizes yet, and surfaces them as one-click "report this?" buttons in each detected provider's detail view — no need to notice or type anything by hand. Sends a provider ID, the header name or a short note, and the domain it was seen on (as of v9.5.9 — lets reviewers tell a real provider-wide signal from a header that only ever shows up on one site) — never your IP, and nothing beyond the domain itself. On by default, pointed at the maintainer's own deployed Worker; turn this off or point it at your own endpoint (see /worker/README.md) any time below.</span>
+          <span class="settings-hint" style="color:var(--amber,#f0a020)">⚠ Reporting sends the domain you're viewing to the endpoint above. Turn this off if you don't want that shared, even with the maintainer's own Worker.</span>
         </span>
         <label class="toggle-switch"><input type="checkbox" id="crowdToggle"><span class="slider"></span></label>
       </div>

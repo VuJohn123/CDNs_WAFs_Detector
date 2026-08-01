@@ -1272,7 +1272,7 @@ async function setSettings(patch) {
   try { await chrome.storage.local.set({ [SETTINGS_KEY]: next }); } catch {}
   return next;
 }
-async function maybeSubmitCrowdReport(providerId, unknownHeaderNames) {
+async function maybeSubmitCrowdReport(providerId, unknownHeaderNames, domain) {
   if (!unknownHeaderNames.length) return;
   const settings = await getSettings();
   if (!settings.crowdReportEnabled || !settings.crowdReportEndpoint) return;
@@ -1280,7 +1280,17 @@ async function maybeSubmitCrowdReport(providerId, unknownHeaderNames) {
     await fetchT(settings.crowdReportEndpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ providerId, unknownHeaderNames, engineVersion: ENGINE_VERSION })
+      // domain is included deliberately (as of v9.5.9) so a report saying
+      // "saw header X on Cloudflare" can be cross-checked against other
+      // reports of the same header on *different* domains — a header
+      // appearing across many unrelated domains that all detect the same
+      // provider is real evidence it's actually that provider's signal,
+      // versus one that only ever shows up for a single domain (much more
+      // likely to just be that domain's own application header). This is
+      // a real, disclosed privacy trade-off — see the Settings copy and
+      // worker/README.md, both updated to say so plainly rather than the
+      // previous (now-inaccurate) "never your domain" claim.
+      body: JSON.stringify({ providerId, unknownHeaderNames, domain, engineVersion: ENGINE_VERSION })
     }, 5000);
   } catch { /* best-effort, never block or surface errors to the user */ }
 }
@@ -2217,7 +2227,7 @@ chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => {
     return true;
   }
   if (msg.action === 'submitCrowdReport') {
-    maybeSubmitCrowdReport(msg.providerId, msg.notes ? [msg.notes] : [])
+    maybeSubmitCrowdReport(msg.providerId, msg.notes ? [msg.notes] : [], msg.domain)
       .then(() => sendResponse({ ok: true }));
     return true;
   }
