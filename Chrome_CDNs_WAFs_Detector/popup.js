@@ -1361,14 +1361,19 @@ function renderDetail(result, pid) {
   // certain. Attributing the exact same header list identically to every
   // single detected provider's page (the old behavior) was worse than a
   // guess though — it actively invited reporting the same header against
-  // multiple unrelated providers. Narrowing to "only the single most
-  // confidently detected provider for this domain" is still imperfect, but
-  // it's the best available default and stops the obviously-wrong case of
-  // attaching a report to a barely-detected provider just because its page
-  // happened to be open.
-  const topProviderId = Object.entries(result.providers || {})
+  // multiple unrelated providers. Narrowing to "only the most confidently
+  // detected provider(s) for this domain" is still imperfect, but it's the
+  // best available default and stops the obviously-wrong case of attaching
+  // a report to a barely-detected provider just because its page happened
+  // to be open. A genuine tie at the top (e.g. two providers both at 100%,
+  // which does happen — multi-CDN setups are real) means BOTH are eligible,
+  // not just whichever won an arbitrary sort order.
+  const detectedScored = Object.entries(result.providers || {})
     .filter(([, v]) => v?.verdict?.detected)
-    .sort((a, b) => (b[1].verdict.score || 0) - (a[1].verdict.score || 0))[0]?.[0];
+    .map(([id, v]) => [id, v.verdict.score || 0]);
+  const topScore = Math.max(0, ...detectedScored.map(([, s]) => s));
+  const topProviderIds = new Set(detectedScored.filter(([, s]) => s === topScore).map(([id]) => id));
+  const topProviderId = [...topProviderIds][0]; // kept for the single-name referral message below
 
   const groupsHtml = ui.groups.map(g =>
     sectionHdr(g.title) + g.signals.map(s =>
@@ -1438,8 +1443,8 @@ function renderDetail(result, pid) {
       <div id="tabCorrelationPanel"><div class="breakdown-note">Loading cross-tab data…</div></div>
       ${sectionHdr('Help improve this signature (opt-in)')}
       <div id="crowdReportsPanel"><div class="breakdown-note">Loading community-reported signals…</div></div>
-      ${(pid !== topProviderId && result.unknownHeaders?.length)
-        ? `<div class="breakdown-note">This scan's ${result.unknownHeaders.length} unrecognized header${result.unknownHeaders.length > 1 ? 's are' : ' is'} shown for reporting on <strong>${escHtml(PROVIDER_UI[topProviderId]?.name || topProviderId)}</strong>'s page instead — the most confidently detected provider for this domain. A header can't be reliably attributed to more than one provider, so it's only offered there.</div>`
+      ${(!topProviderIds.has(pid) && result.unknownHeaders?.length)
+        ? `<div class="breakdown-note">This scan's ${result.unknownHeaders.length} unrecognized header${result.unknownHeaders.length > 1 ? 's are' : ' is'} shown for reporting on ${[...topProviderIds].map(id => `<strong>${escHtml(PROVIDER_UI[id]?.name || id)}</strong>`).join(' or ')}'s page instead — the most confidently detected provider${topProviderIds.size > 1 ? 's' : ''} for this domain. A header can't be reliably attributed to more than one provider, so it's only offered there.</div>`
         : (result.unknownHeaders?.length)
         ? `<div class="breakdown-note">This scan saw ${result.unknownHeaders.length} header${result.unknownHeaders.length > 1 ? 's' : ''} no provider recognizes yet. These may belong to ${escHtml(ui.name)}'s edge layer — or just as easily to the origin application itself. Only report a header here if you have real reason to think it's actually part of ${escHtml(ui.name)}'s infrastructure. Reporting sends this domain (${escHtml(domain)}) along with it, so it can be cross-checked against other domains (only sent if crowd reporting is enabled in Settings):</div>
            <div style="display:flex;flex-wrap:wrap;gap:6px;margin:8px 0">

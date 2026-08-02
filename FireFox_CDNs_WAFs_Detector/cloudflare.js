@@ -139,8 +139,9 @@ self.CDN_PROVIDERS.push({
   probes: [
     { url: d => `https://${d}/cdn-cgi/trace`, validStatuses: [200],
       handler: async (res, s) => {
-        s.trace = true;
         const text = await res.text().catch(() => '');
+        if (self._looksLikeGenericHtmlFallback(text)) return; // likely a SPA/catch-all 200, not the real endpoint
+        s.trace = true;
         if (!text.includes('colo=')) return;
         const t = self._cfParseTrace(text);
         s.traceConfirmed   = true;
@@ -160,11 +161,35 @@ self.CDN_PROVIDERS.push({
       }
     },
     { url: d => `https://${d}/cdn-cgi/challenge-platform/`,
-      validStatuses: [200,400,403,503], handler: (_, s) => { s.assets = true; } },
+      validStatuses: [200,400,403,503],
+      handler: async (res, s) => {
+        // 400/403/503 responses are inherently not a generic HTML shell in
+        // practice, so the content check only matters for the 200 case.
+        if (res.status === 200) {
+          const text = await res.text().catch(() => '');
+          if (self._looksLikeGenericHtmlFallback(text)) return;
+        }
+        s.assets = true;
+      }
+    },
     { url: d => `https://${d}/cdn-cgi/rum`,
-      validStatuses: [200,204,400],    handler: (_, s) => { s.cfRum = true; } },
+      validStatuses: [200,204,400],
+      handler: async (res, s) => {
+        if (res.status === 200) {
+          const text = await res.text().catch(() => '');
+          if (self._looksLikeGenericHtmlFallback(text)) return;
+        }
+        s.cfRum = true;
+      }
+    },
     { url: d => `https://${d}/cdn-cgi/zaraz/i.js`,
-      validStatuses: [200],            handler: (_, s) => { s.cfZaraz = true; } },
+      validStatuses: [200],
+      handler: async (res, s) => {
+        const text = await res.text().catch(() => '');
+        if (self._looksLikeGenericHtmlFallback(text)) return;
+        s.cfZaraz = true;
+      }
+    },
     { url: d => `https://${d}/cdn-cgi/image/width=1,format=auto/`,
       validStatuses: [400,403,404],
       handler: async (res, s) => {
@@ -177,9 +202,25 @@ self.CDN_PROVIDERS.push({
       handler: (res, s) => { if (res.headers.has('cf-ray')) s.cfBotManagement = true; }
     },
     { url: d => `https://${d}/cdn-cgi/waitingroom/`,
-      validStatuses: [200,403,503], handler: (_, s) => { s.waitingRoom = true; } },
+      validStatuses: [200,403,503],
+      handler: async (res, s) => {
+        if (res.status === 200) {
+          const text = await res.text().catch(() => '');
+          if (self._looksLikeGenericHtmlFallback(text)) return;
+        }
+        s.waitingRoom = true;
+      }
+    },
     { url: d => `https://${d}/cdn-cgi/access/`,
-      validStatuses: [200,403,503], handler: (_, s) => { s.zeroTrust  = true; } }
+      validStatuses: [200,403,503],
+      handler: async (res, s) => {
+        if (res.status === 200) {
+          const text = await res.text().catch(() => '');
+          if (self._looksLikeGenericHtmlFallback(text)) return;
+        }
+        s.zeroTrust = true;
+      }
+    }
   ],
 
   cnamePatterns: [

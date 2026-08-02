@@ -1,7 +1,8 @@
 // ============================================================
-// Multi-CDN/WAF Detector — background.js  v8.1
-// 2026 update: resilient multi-provider DoH fallback, NS lookup,
-// stricter signal scoring, common-header expansion, shared ALPN probe
+// Multi-CDN/WAF Detector — background.js
+// (See CHANGELOG.md for version history — this header comment went
+// stale across enough releases, same as the one in popup.js, that it's
+// not maintained here anymore.)
 //
 // CROSS-BROWSER NOTE (Chrome / Edge / Opera / Firefox, all MV3):
 // - Uses `self` (not `window`) for shared globals — valid in both the
@@ -15,6 +16,25 @@
 //   workers and intentionally avoided so the same file runs unmodified
 //   under either background mode declared in manifest.json.
 // ============================================================
+
+// Shared by every provider's probe handlers (see cloudflare.js for the
+// clearest example: /cdn-cgi/trace, /cdn-cgi/rum, /cdn-cgi/zaraz/i.js, and
+// /cdn-cgi/challenge-platform/ all previously trusted a 200 status code
+// alone, with no check that the body was actually the specific small
+// payload those internal endpoints return. A domain whose origin does
+// SPA-style catch-all routing (return 200 + index.html for literally any
+// unmatched path — common with client-side routers) would make every one
+// of those probes fire as a false positive, since they'd all just get
+// back the same 200 HTML shell regardless of the path requested. This
+// doesn't fully solve "is this response actually meaningful" in general,
+// but it catches the specific, common failure mode: a full HTML document
+// where a provider's internal endpoint should return a small, specific,
+// non-HTML payload.
+self._looksLikeGenericHtmlFallback = function(text) {
+  if (!text) return false;
+  const head = text.slice(0, 400).toLowerCase();
+  return head.includes('<!doctype html') || /<html[\s>]/.test(head);
+};
 
 importScripts(
   'cloudflare.js',
@@ -49,7 +69,7 @@ const CACHE_TTL_MS     = 5 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 8000;
 const PROBE_TIMEOUT_MS = 6000;
 const DOH_TIMEOUT_MS   = 6000;
-const PROBE_CONCURRENCY = 6;
+const PROBE_CONCURRENCY = 8; // bumped from 6 — all probes hit the same origin (HTTP/2+ multiplexes fine), low risk
 
 // Bump this whenever scoring/signal logic changes meaningfully, so existing
 // cache entries (which may reflect outdated logic) are invalidated automatically.

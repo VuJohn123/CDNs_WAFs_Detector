@@ -125,9 +125,33 @@ self.CDN_PROVIDERS.push({
       }
     },
     { url: d => `https://${d}/akamai/sureroute-test-object.html`,
-      validStatuses: [200,403,404], handler: (_, s) => { s.akamaiSureRoute = true; } },
+      validStatuses: [200,403,404],
+      handler: async (res, s) => {
+        // Reversed from an earlier, more cautious version of this probe:
+        // real-world testing showed a domain can return HTTP 200 with a
+        // generic "Page not found" HTML body for this exact path (no
+        // relation to Akamai at all) and the old code ticked it green
+        // purely off the status code. A genuine SureRoute test object is a
+        // small, specific static payload — not a full HTML document — so
+        // the same generic-HTML-shell guard used on the other probes
+        // applies safely here too.
+        if (res.status === 200) {
+          const text = await res.text().catch(() => '');
+          if (self._looksLikeGenericHtmlFallback(text)) return;
+        }
+        s.akamaiSureRoute = true;
+      }
+    },
     { url: d => `https://${d}/_mPulse/api/v1/`,
-      validStatuses: [200,400,403,404], handler: (_, s) => { s.akamaiMpulse = true; } },
+      validStatuses: [200,400,403,404],
+      handler: async (res, s) => {
+        if (res.status === 200) {
+          const text = await res.text().catch(() => '');
+          if (self._looksLikeGenericHtmlFallback(text)) return;
+        }
+        s.akamaiMpulse = true;
+      }
+    },
   ],
 
   cnamePatterns: [
