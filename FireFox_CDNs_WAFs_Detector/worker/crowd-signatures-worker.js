@@ -30,22 +30,28 @@ function buildDashboard(data) {
   const rows = providers.map(pid => {
     const reports = data[pid];
     if (!reports.length) return '';
-    const freq = {};
+    const freq = {};      // note -> report count
+    const domains = {};   // note -> Set of distinct domains seen with it
     for (const r of reports) {
       for (const note of (r.notes || [])) {
         const k = note.toLowerCase().trim();
         freq[k] = (freq[k] || 0) + 1;
+        if (r.domain) (domains[k] ||= new Set()).add(r.domain);
       }
     }
     const sorted = Object.entries(freq).sort((a,b) => b[1]-a[1]).slice(0, 20);
-    const noteRows = sorted.map(([note, count]) =>
-      `<tr><td>${escHtml(note)}</td><td class="num">${count}</td></tr>`
-    ).join('');
+    const noteRows = sorted.map(([note, count]) => {
+      const domainSet = domains[note];
+      const domainCell = domainSet
+        ? `${domainSet.size} domain${domainSet.size > 1 ? 's' : ''}${domainSet.size <= 3 ? ': ' + escHtml([...domainSet].join(', ')) : ''}`
+        : '<span class="empty">—</span>';
+      return `<tr><td>${escHtml(note)}</td><td class="num">${count}</td><td>${domainCell}</td></tr>`;
+    }).join('');
     return `
       <section>
         <h2>${escHtml(pid)} <span class="badge">${reports.length} reports</span></h2>
-        <table><thead><tr><th>Note</th><th>Count</th></tr></thead>
-        <tbody>${noteRows || '<tr><td colspan="2" class="empty">No text notes yet</td></tr>'}</tbody></table>
+        <table><thead><tr><th>Note</th><th>Count</th><th>Distinct domains</th></tr></thead>
+        <tbody>${noteRows || '<tr><td colspan="3" class="empty">No text notes yet</td></tr>'}</tbody></table>
       </section>`;
   }).join('');
 
@@ -78,8 +84,8 @@ function buildDashboard(data) {
 </head>
 <body>
 <h1>CDN/WAF Detector — Crowd Reports</h1>
-<div class="meta">Anonymous signal submissions from opted-in extension installs. Use these to spot new provider signatures.<br>
-Endpoint: <code>POST /report</code> · Review: <code>GET /reports?provider=ID</code> · Add auth before making this public.</div>
+<div class="meta">Signal submissions from opted-in extension installs — each includes a provider ID, a header/note, and (as of v9.5.9) the domain it was seen on, so you can tell whether a header is corroborated across many unrelated sites (real provider signal) or only ever seen on one (probably that site's own header, not this provider's).<br>
+Endpoint: <code>POST /report</code> · Review: <code>GET /reports?provider=ID</code> · Add auth before making this public — this now stores domains, which is more sensitive than the header-only data this dashboard held before.</div>
 <div class="stats">
   <div class="stat"><div class="stat-n">${providers.length}</div><div class="stat-l">Providers with reports</div></div>
   <div class="stat"><div class="stat-n">${totalReports}</div><div class="stat-l">Total submissions</div></div>
@@ -118,9 +124,15 @@ export default {
         ...(body.notes ? [body.notes] : [])
       ].map(s => String(s).slice(0, MAX_NOTE_LENGTH)).filter(Boolean).slice(0, 5);
       if (!notes.length) return json({ error: 'Empty report' }, 400);
+      // Domain is sent deliberately as of the extension's v9.5.9 — lets a
+      // human reviewer see whether a header shows up across many unrelated
+      // domains (real evidence it's this provider's own signal) versus
+      // only ever on one domain (much more likely to be that domain's own
+      // application header, not a provider signal at all).
+      const domain = String(body.domain || '').slice(0, 253).toLowerCase().replace(/[^a-z0-9.-]/g, '');
       const key      = `provider:${providerId}`;
       const existing = JSON.parse(await env.REPORTS.get(key) || '[]');
-      existing.unshift({ notes, engineVersion: body.engineVersion || null, ts: Date.now() });
+      existing.unshift({ notes, domain: domain || null, engineVersion: body.engineVersion || null, ts: Date.now() });
       await env.REPORTS.put(key, JSON.stringify(existing.slice(0, MAX_PER_PROVIDER)));
       return json({ ok: true });
     }
