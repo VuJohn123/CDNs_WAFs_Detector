@@ -392,6 +392,12 @@ const PROVIDER_UI = {
     ]},
   ]},
 
+  denodeploy: { name:'Deno Deploy', color:'#70ffaf', icon:'🦕', groups:[
+    { title:'Network', signals:[
+      {key:'denoCname',   label:'CNAME → *.deno.dev or *.deno.net', tip:'Documented default domain pattern (Classic: deno.dev, current platform: deno.net)'},
+    ]},
+  ]},
+
   bunnycdn: { name:'BunnyCDN', color:'#f5a623', icon:'🐰', groups:[
     { title:'Network', signals:[
       {key:'bunnyIP',             label:'Resolves to BunnyCDN IP'},

@@ -60,7 +60,8 @@ importScripts(
   'vncdn.js',
   'flyio.js',
   'render.js',
-  'railway.js'
+  'railway.js',
+  'denodeploy.js'
 );
 
 // ── Constants ─────────────────────────────────────────────────

@@ -27,4 +27,5 @@ const PROVIDER_META = {
   flyio:      { name: 'Fly.io',           color: '#8b5cf6' },
   render:     { name: 'Render',           color: '#46e3b7' },
   railway:    { name: 'Railway',          color: '#9f5fff' },
+  denodeploy: { name: 'Deno Deploy',      color: '#70ffaf' },
 };
