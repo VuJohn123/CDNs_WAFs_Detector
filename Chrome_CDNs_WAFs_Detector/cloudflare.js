@@ -29,7 +29,7 @@ self.CDN_PROVIDERS.push({
     'cf-ray','cf-cache-status','cf-connecting-ip','true-client-ip','cf-visitor',
     'cf-edge-cache','cf-mitigated','cf-bgj','cf-ew-via','cf-ew-trace','cdn-loop',
     'cf-pages-commit-sha','cf-pages-deployment-id','alt-svc','nel','report-to',
-    'server','server-timing',
+    'server','server-timing','cloudflare-cdn-cache-control','cdn-cache-control',
   ],
 
   ipConfig: {
@@ -50,7 +50,7 @@ self.CDN_PROVIDERS.push({
     cfIP: false, cfCname: false, cfPages: false, cfEmailMx: false,
     cfRay: false, cfRayValid: false, serverHeader: false, cdnLoop: false,
     cfEwVia: false, cfVisitor: false, cfEdgeCache: false, cfTrueClientIp: false,
-    cfPagesHeaders: false, cfBgj: false,
+    cfPagesHeaders: false, cfBgj: false, cfCacheControlHeader: false,
     cfCache: false, cfCacheValid: false, cfMitigated: false,
     nelCloudflare: false, h3AltSvc: false,
     // Server-Timing sub-metrics (2026 Cloudflare changelog)
@@ -82,6 +82,12 @@ self.CDN_PROVIDERS.push({
     if (res.headers.has('cf-ew-via'))                               s.cfEwVia           = true;
     if (res.headers.has('cf-visitor'))                              s.cfVisitor         = true;
     if (res.headers.has('cf-edge-cache'))                           s.cfEdgeCache       = true;
+    // RFC 9213 "Targeted HTTP Cache Control" vendor-scoped variant — per
+    // current documentation this is emitted only by Cloudflare edge nodes
+    // (the generic, non-prefixed CDN-Cache-Control is shared across CDNs
+    // that support RFC 9213 and isn't Cloudflare-exclusive, so it's tracked
+    // in knownHeaders for the unknown-header filter but doesn't score here).
+    if (res.headers.has('cloudflare-cdn-cache-control'))            s.cfCacheControlHeader = true;
     if (res.headers.has('cf-bgj'))                                  s.cfBgj             = true;
     if (res.headers.has('true-client-ip') || res.headers.has('cf-connecting-ip'))
                                                                      s.cfTrueClientIp    = true;
@@ -272,6 +278,11 @@ self.CDN_PROVIDERS.push({
     if (s.zeroTrust)                  n += 32;
     if (s.cfPagesHeaders)             n += 30;
     if (s.cfEdgeCache)                n += 28;
+    // Vendor-scoped per RFC 9213, so exclusive when present — but scored
+    // moderately rather than as a top-tier signal since it's an opt-in
+    // cache-control feature, not enabled on every Cloudflare zone, so its
+    // absence says nothing (only its presence is informative).
+    if (s.cfCacheControlHeader)       n += 30;
     if (s.cfCvParams)                 n += 28;
     if (s.cfEwTrace)                  n += 26; // CF-EW-Trace = Workers tracing
     // Tier 3

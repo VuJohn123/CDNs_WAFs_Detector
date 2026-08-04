@@ -37,6 +37,7 @@ const PROVIDER_UI = {
       {key:'cfEwVia',            label:'CF-EW-Via (Workers active)'},
       {key:'cfVisitor',          label:'CF-Visitor (proxy JSON)'},
       {key:'cfEdgeCache',        label:'CF-Edge-Cache (Enterprise)'},
+      {key:'cfCacheControlHeader', label:'Cloudflare-CDN-Cache-Control present', tip:'RFC 9213 vendor-scoped cache-control header — exclusive to Cloudflare per current docs, but opt-in per zone'},
       {key:'cfTrueClientIp',     label:'True-Client-IP / CF-Connecting-IP'},
       {key:'cfPagesHeaders',     label:'CF-Pages-Commit-SHA / Deployment-ID'},
       {key:'cfBgj',              label:'CF-BGJ (Enterprise internal)'},

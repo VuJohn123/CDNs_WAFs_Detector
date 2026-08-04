@@ -362,3 +362,11 @@ Researched the current CDN/edge-hosting landscape for anything genuinely new and
 - Also fixed while touching this: the manifest description still said "24" providers and referenced "Core Web Vitals attribution," a feature removed as dead code back in v9.5.3. Now says 25 and mentions crowd-sourced signature reporting instead.
 
 Considered and set aside: BlazingCDN (a newer, cost-focused entrant per recent market coverage) — no verified technical signal (headers, IP ranges, or domain pattern) found to detect it by, so nothing was added rather than guessing.
+
+## v9.5.13 — New signal: RFC 9213 vendor-scoped cache-control header
+
+Researched what's genuinely new in the CDN/WAF space rather than repeating already-covered ground. Found: **RFC 9213 "Targeted HTTP Cache Control"** — a finalized, published RFC (not a draft) co-authored by engineers from Akamai, Fastly, and Cloudflare, defining a generic `CDN-Cache-Control` response header plus vendor-scoped variants like `Cloudflare-CDN-Cache-Control`. Confirmed via a source dated June 2026 that Cloudflare has actually shipped the vendor-scoped variant and processes it in preference to the generic one when both are present.
+
+Added `cloudflare-cdn-cache-control` detection to `cloudflare.js` as a new signal (`cfCacheControlHeader`, +30 points) — vendor-prefixed, so exclusive to Cloudflare when present, per current documentation. Scored moderately rather than as a top-tier signal since it's an opt-in per-zone cache feature, not universal — its absence proves nothing, only its presence is informative. The generic (non-prefixed) `cdn-cache-control` header was added to `knownHeaders` so the unknown-header detector doesn't flag it as unrecognized, but it isn't scored on its own since it's shared across any RFC 9213–supporting CDN, not Cloudflare-exclusive.
+
+Deliberately did **not** add a similar check for Akamai's vendor-scoped variant — the only source found naming one used an older (2021) name that may not reflect Akamai's actual current header, and guessing at an unverified header name would violate the project's own "no fabricated signals" rule. Worth revisiting if a more current, confirmed source turns up.
