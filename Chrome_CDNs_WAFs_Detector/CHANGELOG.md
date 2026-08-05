@@ -390,3 +390,14 @@ Re-running the "does every provider appear everywhere it should" check (the same
 
 ### Performance — investigated, no change needed
 Checked `ipMatches()` (the IP-range-matching hot path) for an algorithmic bottleneck given the provider count grew from 24 to 26. It's a linear scan, but only ~4-8 resolved IPs are checked against the 5 providers that currently have non-trivial CIDR lists (Cloudflare, Fastly, CloudFront, Google, BunnyCDN) — worst case a few thousand cheap numeric range comparisons, sub-millisecond in practice. Not a real bottleneck; adding a trie/radix structure or similar here would be complexity for no measurable benefit, so nothing was changed.
+
+## v9.5.15 — Accessibility pass, i18n verified, Early Hints researched (not implementable)
+
+### Added — screen-reader announcements for scan status/progress
+`popup.html`'s static toolbar buttons already had proper `aria-label`/`aria-hidden` — that part was solid. The gap was dynamic content: the status line and progress indicator update constantly during a scan with no way for a screen reader to know unless the user manually navigates to check. Added `role="status" aria-live="polite"` to both. Deliberately did **not** add `aria-live` to the large `#results` container — that would force screen readers to re-announce entire multi-hundred-line detail views on every click (switching providers, opening Settings), which is worse than saying nothing. The right pattern here is a brief, meaningful status announcement, with the user navigating into the detail on their own terms afterward — not force-reading everything.
+
+### Verified — i18n already complete
+Compared every key in `_locales/en/messages.json` against `_locales/vi/messages.json`: 36/36 match exactly both directions, nothing missing either side. No fix needed — good to have confirmed rather than assumed.
+
+### Researched, not implementable — Early Hints (HTTP 103)
+A real, increasingly-deployed signal (RFC 8297; Cloudflare, Fastly, and Google all document support) — but a dead end for this extension specifically: 103 is a 1xx *interim* response, and the Fetch API a browser extension uses (`fetch()`) never exposes interim responses to JavaScript at all — the browser consumes and discards them internally before the `Response` object (representing only the final 200/404/etc.) is handed back. `chrome.webRequest` doesn't expose 1xx responses to extensions either. This isn't a code gap to fix — it's a platform limitation with no available workaround, so nothing was added rather than pretending otherwise.

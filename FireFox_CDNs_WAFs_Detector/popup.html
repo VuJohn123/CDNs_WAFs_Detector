@@ -71,11 +71,11 @@
   </section>
 
   <div id="status-bar" class="status-bar">
-    <span id="status-text" class="status-idle" data-i18n="statusReady">Ready — enter a domain above</span>
+    <span id="status-text" class="status-idle" role="status" aria-live="polite" data-i18n="statusReady">Ready — enter a domain above</span>
     <span id="cached-badge" class="cached-badge" hidden>cached</span>
   </div>
 
-  <div id="progress" hidden>
+  <div id="progress" hidden role="status" aria-live="polite" aria-label="Scan progress">
     <div class="progress-track">
       <div id="pbar" class="progress-fill"></div>
     </div>
