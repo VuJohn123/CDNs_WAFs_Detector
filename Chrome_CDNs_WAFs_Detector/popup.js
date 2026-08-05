@@ -2171,6 +2171,70 @@ function exportMarkdown(result) {
   });
 }
 
+// ── D1 follow-up: score-over-time sparkline chart ──────────────
+// The timeline view already stored everything needed for this (full
+// snapshots per scan) — it just never had a visual trend, only a text
+// list. A chart makes "did anything actually change, and when" far more
+// scannable than reading N rows of dates and provider-name lists.
+function renderScoreSparkline(snaps) {
+  // snaps is newest-first; chart wants chronological (oldest → newest).
+  const chrono = [...snaps].reverse();
+  if (chrono.length < 2) return ''; // a single point isn't a trend — skip
+
+  // Only chart providers that were ever detected at least once, so the
+  // chart isn't cluttered with flat zero-lines for irrelevant providers.
+  const everDetected = new Set();
+  for (const s of chrono) {
+    for (const [id, v] of Object.entries(s.result?.providers || {})) {
+      if (v?.verdict?.detected) everDetected.add(id);
+    }
+  }
+  if (!everDetected.size) return '';
+
+  const W = 420, H = 130, padL = 28, padR = 10, padT = 10, padB = 20;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const xFor = i => padL + (chrono.length === 1 ? 0 : (i / (chrono.length - 1)) * plotW);
+  const yFor = score => padT + plotH - (Math.max(0, Math.min(100, score)) / 100) * plotH;
+
+  const gridLines = [0, 25, 50, 75, 100].map(v =>
+    `<line x1="${padL}" y1="${yFor(v)}" x2="${W - padR}" y2="${yFor(v)}" stroke="var(--border)" stroke-width="1" stroke-dasharray="2,3"/>
+     <text x="2" y="${yFor(v) + 3}" font-size="8" fill="var(--text-faint)">${v}</text>`
+  ).join('');
+
+  const providerLines = [...everDetected].map(id => {
+    const color = PROVIDER_UI[id]?.color || '#94a3b8';
+    const name  = PROVIDER_UI[id]?.name  || id;
+    const points = chrono.map((s, i) => {
+      const score = s.result?.providers?.[id]?.verdict?.score ?? 0;
+      return { x: xFor(i), y: yFor(score), score, ts: s.ts };
+    });
+    const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+    const dots = points.map(p =>
+      `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2.5" fill="${color}">
+         <title>${escHtml(name)}: ${p.score}% on ${new Date(p.ts).toLocaleString()}</title>
+       </circle>`
+    ).join('');
+    return `<path d="${pathD}" fill="none" stroke="${color}" stroke-width="1.75" opacity="0.9"/>${dots}`;
+  }).join('');
+
+  const legend = [...everDetected].map(id => {
+    const color = PROVIDER_UI[id]?.color || '#94a3b8';
+    const name  = PROVIDER_UI[id]?.name  || id;
+    return `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:9.5px;color:var(--text-dim)">
+      <span style="width:8px;height:8px;border-radius:50%;background:${color};display:inline-block"></span>${escHtml(name)}
+    </span>`;
+  }).join('');
+
+  return `
+    <div style="padding:10px 14px 4px">
+      <svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" role="img" aria-label="Confidence score trend over time per provider">
+        ${gridLines}
+        ${providerLines}
+      </svg>
+      <div style="display:flex;flex-wrap:wrap;padding:2px 0 8px">${legend}</div>
+    </div>`;
+}
+
 // ── D1: Timeline / snapshot diff view ─────────────────────────
 function renderTimeline(domain) {
   if (!domain) return;
@@ -2229,6 +2293,7 @@ function renderTimeline(domain) {
         <button class="back-btn" id="backBtn">← Back</button>
         <span class="detail-name">📅 Timeline — ${escHtml(domain)}</span>
       </div>
+      ${renderScoreSparkline(snaps)}
       <div style="padding:0 14px 8px"><button class="link-btn" id="exportDiffOnlyBtn">⇩ Export changes only (skip unchanged snapshots)</button></div>
       <div class="checks-list history-list">${rows}</div>`;
     document.getElementById('backBtn').addEventListener('click', () => {
