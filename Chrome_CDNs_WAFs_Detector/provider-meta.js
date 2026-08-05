@@ -28,4 +28,5 @@ const PROVIDER_META = {
   render:     { name: 'Render',           color: '#46e3b7' },
   railway:    { name: 'Railway',          color: '#9f5fff' },
   denodeploy: { name: 'Deno Deploy',      color: '#70ffaf' },
+  heroku:     { name: 'Heroku',           color: '#79589f' },
 };

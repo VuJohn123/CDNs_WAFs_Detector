@@ -370,3 +370,23 @@ Researched what's genuinely new in the CDN/WAF space rather than repeating alrea
 Added `cloudflare-cdn-cache-control` detection to `cloudflare.js` as a new signal (`cfCacheControlHeader`, +30 points) — vendor-prefixed, so exclusive to Cloudflare when present, per current documentation. Scored moderately rather than as a top-tier signal since it's an opt-in per-zone cache feature, not universal — its absence proves nothing, only its presence is informative. The generic (non-prefixed) `cdn-cache-control` header was added to `knownHeaders` so the unknown-header detector doesn't flag it as unrecognized, but it isn't scored on its own since it's shared across any RFC 9213–supporting CDN, not Cloudflare-exclusive.
 
 Deliberately did **not** add a similar check for Akamai's vendor-scoped variant — the only source found naming one used an older (2021) name that may not reflect Akamai's actual current header, and guessing at an unverified header name would violate the project's own "no fabricated signals" rule. Worth revisiting if a more current, confirmed source turns up.
+
+## v9.5.14 — Heroku (26th provider), taxonomy-tree registration gap, stability/performance re-audit
+
+### Added — Heroku
+Researched: still an active, live PaaS (Salesforce subsidiary, replatformed onto Kubernetes in 2024, ongoing as of 2026 — not defunct). Added `heroku.js` on the same conservative pattern as Render/Railway/Deno Deploy: domain-suffix matching only (`.herokuapp.com$`, `.herokudns.com$`, both from Heroku's own DevCenter docs). Heroku's router does add an `X-Request-ID` header, but that name is generic enough that unrelated services also use it — not treated as an exclusive signal, so it isn't checked.
+
+### Fixed — new providers were invisible in the 4-layer taxonomy tree
+Re-running the "does every provider appear everywhere it should" check (the same class of bug fixed for Fly.io/Render/Railway back in v9.5.3) turned up a 5th registration point that had been missed for the two newest providers: the taxonomy tree's `TAXONOMY[].ids` arrays are a separate, hardcoded grouping from `PROVIDER_UI`, and Deno Deploy + Heroku were in `PROVIDER_UI` (so visible in the overview grid) but absent from the `hosting` group's `ids` list — meaning either would score correctly but never appear in the 4-layer tree view. Both added to the `hosting` group alongside Vercel/Netlify/Fly.io/Render/Railway. Verified programmatically afterward: all 26 providers now appear in exactly one taxonomy group.
+
+### Verified stable — full re-audit
+- Full `node --check` sweep across every `.js` file in both builds — clean.
+- Both `manifest.json` files valid, Firefox `gecko.id` unchanged.
+- Cross-checked provider registration across all 5 places a provider needs to exist (`CDN_PROVIDERS` in its own file, `importScripts`, `provider-meta.js`, `PROVIDER_UI`, `TAXONOMY`) — 26/26 consistent everywhere.
+- Re-ran the message-action parity check (every `sendMessage`/port call in `popup.js`/`batch.js`/`compare.js`/`offscreen.html` against every handler in `background.js`) — clean, only the already-known, intentionally-unwired `previewCustomRule` remains.
+- Re-ran the soft-404 probe sweep across all 26 provider files — nothing unguarded.
+- No duplicate top-level declarations in `background.js` or `popup.js`.
+- CSS: confirmed no regression back to sub-9px text.
+
+### Performance — investigated, no change needed
+Checked `ipMatches()` (the IP-range-matching hot path) for an algorithmic bottleneck given the provider count grew from 24 to 26. It's a linear scan, but only ~4-8 resolved IPs are checked against the 5 providers that currently have non-trivial CIDR lists (Cloudflare, Fastly, CloudFront, Google, BunnyCDN) — worst case a few thousand cheap numeric range comparisons, sub-millisecond in practice. Not a real bottleneck; adding a trie/radix structure or similar here would be complexity for no measurable benefit, so nothing was changed.

@@ -399,6 +399,12 @@ const PROVIDER_UI = {
     ]},
   ]},
 
+  heroku: { name:'Heroku', color:'#79589f', icon:'🟣', groups:[
+    { title:'Network', signals:[
+      {key:'herokuCname', label:'CNAME → *.herokuapp.com or *.herokudns.com', tip:'Documented official domain pattern'},
+    ]},
+  ]},
+
   bunnycdn: { name:'BunnyCDN', color:'#f5a623', icon:'🐰', groups:[
     { title:'Network', signals:[
       {key:'bunnyIP',             label:'Resolves to BunnyCDN IP'},
@@ -2324,7 +2330,7 @@ function renderTree(result, domain) {
     },
     {
       id: 'hosting', label: 'Edge Hosting / Serverless', icon: '⚡', color: '#8b5cf6',
-      ids: ['vercel','netlify','flyio','render','railway'],
+      ids: ['vercel','netlify','flyio','render','railway','denodeploy','heroku'],
       tip: 'Application hosting with built-in edge delivery; often the origin itself',
       competingFullServices: true,
     },

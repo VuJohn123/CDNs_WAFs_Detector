@@ -61,7 +61,8 @@ importScripts(
   'flyio.js',
   'render.js',
   'railway.js',
-  'denodeploy.js'
+  'denodeploy.js',
+  'heroku.js'
 );
 
 // ── Constants ─────────────────────────────────────────────────
