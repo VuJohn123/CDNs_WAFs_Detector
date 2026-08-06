@@ -1612,8 +1612,8 @@ async function ambientHeadersListener(details) {
     set.add(hint);
     _ambientByTab.set(details.tabId, set);
     persistAmbientByTab();
-    chrome.action.setBadgeText({ tabId: details.tabId, text: String(set.size) });
-    chrome.action.setBadgeBackgroundColor({ tabId: details.tabId, color: '#1ed4ff' });
+    chrome.action.setBadgeText({ tabId: details.tabId, text: String(set.size) }).catch(() => {});
+    chrome.action.setBadgeBackgroundColor({ tabId: details.tabId, color: '#1ed4ff' }).catch(() => {});
   } catch {}
 }
 function ambientGuessFromHeaders(headerList) {
@@ -1642,7 +1642,7 @@ try {
     if (info.status === 'loading') {
       await hydrateAmbientByTab();
       if (_ambientByTab.delete(tabId)) persistAmbientByTab();
-      chrome.action.setBadgeText({ tabId, text: '' });
+      chrome.action.setBadgeText({ tabId, text: '' }).catch(() => {});
     }
   });
 } catch { /* webRequest unavailable — ambient mode simply won't activate */ }
@@ -2251,6 +2251,29 @@ chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => {
   if (msg.action === 'submitCrowdReport') {
     maybeSubmitCrowdReport(msg.providerId, msg.notes ? [msg.notes] : [], msg.domain)
       .then(() => sendResponse({ ok: true }));
+    return true;
+  }
+  if (msg.action === 'testCrowdEndpoint') {
+    (async () => {
+      const endpoint = (msg.endpoint || '').trim();
+      if (!endpoint) { sendResponse({ ok: false, message: 'No endpoint configured yet.' }); return; }
+      try {
+        const base = crowdReportsBaseUrl(endpoint);
+        const start = Date.now();
+        // GET the dashboard root rather than POSTing a real report — this
+        // confirms the Worker is deployed and reachable without writing
+        // any test data into real report storage.
+        const res = await fetchT(base || endpoint, {}, 8000);
+        const ms = Date.now() - start;
+        if (res.ok) {
+          sendResponse({ ok: true, message: `Reachable — HTTP ${res.status} in ${ms}ms.` });
+        } else {
+          sendResponse({ ok: false, message: `Responded, but with HTTP ${res.status} — the Worker may not be deployed at this URL, or the path is wrong.` });
+        }
+      } catch (err) {
+        sendResponse({ ok: false, message: `Unreachable — ${err.message || 'network error'}. Check the URL and that the Worker is actually deployed (wrangler deploy).` });
+      }
+    })();
     return true;
   }
   if (msg.action === 'getCrowdReports') {

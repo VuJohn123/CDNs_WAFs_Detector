@@ -1851,6 +1851,8 @@ function renderSettings(settings) {
         <label class="toggle-switch"><input type="checkbox" id="crowdToggle"><span class="slider"></span></label>
       </div>
       <input type="text" id="crowdEndpointInput" class="settings-input" placeholder="https://cdnwaf-crowd-signatures.minhvutanlaphanoi.workers.dev/report">
+      <button class="link-btn" id="testConnectionBtn" style="margin-top:4px">🔌 Test connection</button>
+      <div id="testConnectionResult" style="margin-top:2px"></div>
       <div class="breakdown-note" style="margin-top:6px">View submitted reports and their frequency at the Worker's own URL (<code>https://cdnwaf-crowd-signatures.minhvutanlaphanoi.workers.dev/</code>) — the dashboard is built into the Worker code. Point this at your own deployed Worker instead if you'd rather not share signals with the shared one.</div>
 
       <div class="settings-section-title" style="margin-top:16px;opacity:0.7">— Advanced —</div>
@@ -1898,6 +1900,20 @@ function renderSettings(settings) {
     if (v && !/\/report$/i.test(v)) v += '/report';
     e.target.value = v;
     chrome.runtime.sendMessage({ action: 'setSettings', patch: { crowdReportEndpoint: v } });
+  });
+  document.getElementById('testConnectionBtn').addEventListener('click', () => {
+    const btn = document.getElementById('testConnectionBtn');
+    const out = document.getElementById('testConnectionResult');
+    const endpoint = document.getElementById('crowdEndpointInput').value.trim();
+    btn.disabled = true;
+    btn.textContent = '🔌 Testing…';
+    out.innerHTML = '';
+    chrome.runtime.sendMessage({ action: 'testCrowdEndpoint', endpoint }, res => {
+      btn.disabled = false;
+      btn.textContent = '🔌 Test connection';
+      const color = res?.ok ? 'var(--green,#2ecc71)' : 'var(--red,#e5484d)';
+      out.innerHTML = `<div class="breakdown-note" style="color:${color}">${res?.ok ? '✓' : '✗'} ${escHtml(res?.message || 'No response')}</div>`;
+    });
   });
   document.getElementById('ambientToggle').addEventListener('change', e => {
     chrome.runtime.sendMessage({ action: 'setSettings', patch: { ambientModeEnabled: e.target.checked } });
