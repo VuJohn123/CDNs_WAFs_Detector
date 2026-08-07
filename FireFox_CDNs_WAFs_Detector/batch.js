@@ -1,5 +1,8 @@
 'use strict';
 
+const versionTagEl = document.getElementById('versionTag');
+if (versionTagEl) versionTagEl.textContent = `v${chrome.runtime.getManifest().version}`;
+
 const domainListEl  = document.getElementById('domainList');
 const csvUploadEl   = document.getElementById('csvUpload');
 const runBtn        = document.getElementById('runBtn');
@@ -14,14 +17,12 @@ const exportCsvBtn  = document.getElementById('exportCsvBtn');
 
 const CONCURRENCY = 3;
 
-// #7: pick up domains handed off from the "batch from bookmarks/tabs" flow
-chrome.storage.local.get('batch_prefill_domains', res => {
-  const domains = res?.batch_prefill_domains;
-  if (domains?.length) {
-    chrome.storage.local.remove('batch_prefill_domains');
-    domainListEl.value = domains.join('\n');
-  }
-});
+// (Removed: a block here used to pick up domains handed off from a "batch
+// from bookmarks/tabs" flow via chrome.storage.local's batch_prefill_domains
+// key — but that feature was removed back in v9.5.0, nothing writes that
+// key anymore, and background.js's runStorageMigration() already actively
+// deletes it on every startup. This was dead code reading a value that
+// could never exist.)
 
 let lastResults = [];   // [{domain, result}]
 let scanAborted = false;

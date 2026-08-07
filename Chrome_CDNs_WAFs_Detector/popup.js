@@ -1853,6 +1853,8 @@ function renderSettings(settings) {
       <input type="text" id="crowdEndpointInput" class="settings-input" placeholder="https://cdnwaf-crowd-signatures.minhvutanlaphanoi.workers.dev/report">
       <button class="link-btn" id="testConnectionBtn" style="margin-top:4px">🔌 Test connection</button>
       <div id="testConnectionResult" style="margin-top:2px"></div>
+      <button class="link-btn" id="runDiagnosticsBtn" style="margin-top:6px">🩺 Run diagnostics</button>
+      <div id="diagnosticsResult" style="margin-top:2px"></div>
       <div class="breakdown-note" style="margin-top:6px">View submitted reports and their frequency at the Worker's own URL (<code>https://cdnwaf-crowd-signatures.minhvutanlaphanoi.workers.dev/</code>) — the dashboard is built into the Worker code. Point this at your own deployed Worker instead if you'd rather not share signals with the shared one.</div>
 
       <div class="settings-section-title" style="margin-top:16px;opacity:0.7">— Advanced —</div>
@@ -1913,6 +1915,22 @@ function renderSettings(settings) {
       btn.textContent = '🔌 Test connection';
       const color = res?.ok ? 'var(--green,#2ecc71)' : 'var(--red,#e5484d)';
       out.innerHTML = `<div class="breakdown-note" style="color:${color}">${res?.ok ? '✓' : '✗'} ${escHtml(res?.message || 'No response')}</div>`;
+    });
+  });
+  document.getElementById('runDiagnosticsBtn').addEventListener('click', () => {
+    const btn = document.getElementById('runDiagnosticsBtn');
+    const out = document.getElementById('diagnosticsResult');
+    btn.disabled = true;
+    btn.textContent = '🩺 Running…';
+    out.innerHTML = '';
+    chrome.runtime.sendMessage({ action: 'runDiagnostics' }, res => {
+      btn.disabled = false;
+      btn.textContent = '🩺 Run diagnostics';
+      const rows = (res?.results || []).map(r => {
+        const color = r.ok ? 'var(--green,#2ecc71)' : 'var(--red,#e5484d)';
+        return `<div class="breakdown-note" style="color:${color}">${r.ok ? '✓' : '✗'} ${escHtml(r.name)} — ${escHtml(r.detail)}</div>`;
+      }).join('');
+      out.innerHTML = rows || '<div class="breakdown-note">No results.</div>';
     });
   });
   document.getElementById('ambientToggle').addEventListener('change', e => {
@@ -2001,6 +2019,33 @@ if (watchlistBtn) {
     chrome.runtime.sendMessage({ action: 'getWatchlist' }, res => renderWatchlist(res?.watchlist || []));
   });
 }
+
+// ── First-run onboarding card ───────────────────────────────────
+// Only shown once, ever — gated by show_onboarding in storage.local,
+// set on chrome.runtime.onInstalled with reason==='install' (not on
+// updates). A lightweight inline card at the top of the popup rather
+// than a blocking modal/overlay — one click to dismiss, doesn't get in
+// the way of using the extension immediately if someone just closes it.
+chrome.runtime.sendMessage({ action: 'checkOnboarding' }, res => {
+  if (!res?.show) return;
+  const card = document.createElement('div');
+  card.className = 'onboarding-card';
+  card.innerHTML = `
+    <div class="onboarding-title">👋 Quick start</div>
+    <ol class="onboarding-steps">
+      <li>Type a domain above and hit <strong>Scan</strong> — or scan the current tab from the toolbar icon.</li>
+      <li>Click any detected provider for its full signal breakdown, confidence score, and why it matched.</li>
+      <li>The badge on the toolbar icon can passively show CDN/WAF info for the page you're on — turn on <strong>Passive ambient detection</strong> in Settings.</li>
+      <li><strong>Settings</strong> also has crowd-sourced reporting, a watchlist for auto-rescans, and optional threat-intel lookups — explore whenever.</li>
+    </ol>
+    <button class="link-btn" id="onboardingDismissBtn">Got it, let's go →</button>`;
+  const header = document.querySelector('.app-header');
+  if (header) header.parentNode.insertBefore(card, header.nextSibling);
+  document.getElementById('onboardingDismissBtn')?.addEventListener('click', () => {
+    chrome.runtime.sendMessage({ action: 'dismissOnboarding' });
+    card.remove();
+  });
+});
 
 // ── Ambient mode banner in popup when enabled ──────────────────
 chrome.runtime.sendMessage({ action: 'getSettings' }, s => {

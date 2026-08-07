@@ -970,6 +970,17 @@ body.sidepanel-mode .checks-list { max-height: none; }
   color: var(--accent); margin-bottom: 8px;
 }
 
+/* ── First-run onboarding card ──────────────────────────────── */
+.onboarding-card {
+  margin: 0 16px 10px; padding: 12px 14px;
+  border-radius: var(--radius-md, 8px);
+  background: var(--accent-dim); border: 1px solid var(--accent);
+}
+.onboarding-title { font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+.onboarding-steps { margin: 0 0 8px; padding-left: 18px; font-size: 10.5px; color: var(--text-dim); line-height: 1.5; }
+.onboarding-steps li { margin-bottom: 4px; }
+.onboarding-steps strong { color: var(--text); }
+
 /* ── Watchlist rows ──────────────────────────────────────────── */
 .watchlist-row {
   display: flex; align-items: center; justify-content: space-between;

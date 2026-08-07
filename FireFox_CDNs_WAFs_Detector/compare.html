@@ -11,7 +11,7 @@
 <div class="app">
   <header class="app-header">
     <div class="header-left"><h1>⇄ Compare 2 Domains</h1></div>
-    <div class="header-right"><span class="version-tag">v9.1</span></div>
+    <div class="header-right"><span class="version-tag" id="versionTag">v9.1</span></div>
   </header>
 
   <div class="fullpage-body">
@@ -47,6 +47,13 @@
         <div class="summary-section-title">Only in B</div>
         <div class="summary-chips" id="chipsOnlyB"></div>
       </div>
+    </div>
+
+    <!-- History trend (shown once both sides have scanned AND at least one
+         has 2+ past snapshots to actually plot a trend from) -->
+    <div id="compareTrend" class="compare-summary" hidden>
+      <div class="summary-section-title">Detected-provider count over time</div>
+      <div id="compareTrendChart"></div>
     </div>
   </div>
 </div>

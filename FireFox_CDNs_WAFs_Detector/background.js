@@ -1351,6 +1351,73 @@ async function fetchCrowdReports(providerId) {
   } catch { return []; }
 }
 
+// ── Diagnostics: one-shot health check across everything the extension
+// depends on. Built for the same reason as the Test Connection button —
+// figuring out "is X actually working" one piece at a time by trial and
+// error is exactly the friction that motivated it; this runs every check
+// in one pass instead.
+async function runDiagnostics() {
+  const results = [];
+
+  // 1. Each DoH resolver — a quick, real query for a domain that's
+  // essentially guaranteed to resolve and not to be blocked anywhere.
+  for (const provider of DOH_PROVIDERS) {
+    const start = Date.now();
+    try {
+      const url = `${provider}?name=cloudflare.com&type=A`;
+      const res = await fetchT(url, { headers: { Accept: 'application/dns-json' } }, 6000);
+      const ms = Date.now() - start;
+      results.push(res.ok
+        ? { name: `DoH: ${new URL(provider).hostname}`, ok: true, detail: `${ms}ms` }
+        : { name: `DoH: ${new URL(provider).hostname}`, ok: false, detail: `HTTP ${res.status}` });
+    } catch (err) {
+      results.push({ name: `DoH: ${new URL(provider).hostname}`, ok: false, detail: err.message || 'unreachable' });
+    }
+  }
+
+  // 2. IP-range cache freshness — reuses the same marker the daily alarm sets.
+  try {
+    const { ip_refresh_ts } = await chrome.storage.local.get('ip_refresh_ts');
+    if (!ip_refresh_ts) {
+      results.push({ name: 'IP-range cache', ok: false, detail: 'Never refreshed yet' });
+    } else {
+      const ageHours = Math.round((Date.now() - ip_refresh_ts) / (60 * 60 * 1000));
+      results.push({ name: 'IP-range cache', ok: ageHours < 48, detail: `Last refreshed ${ageHours}h ago` });
+    }
+  } catch (err) {
+    results.push({ name: 'IP-range cache', ok: false, detail: err.message });
+  }
+
+  // 3. Storage read/write — a real round-trip, not just "did the API exist".
+  try {
+    const testKey = '__diagnostics_probe__';
+    const testVal = String(Date.now());
+    await chrome.storage.local.set({ [testKey]: testVal });
+    const { [testKey]: readBack } = await chrome.storage.local.get(testKey);
+    await chrome.storage.local.remove(testKey);
+    results.push({ name: 'Local storage', ok: readBack === testVal, detail: readBack === testVal ? 'read/write OK' : 'value mismatch' });
+  } catch (err) {
+    results.push({ name: 'Local storage', ok: false, detail: err.message });
+  }
+
+  // 4. Crowd-report endpoint — only if the feature is actually on, since an
+  // unreachable endpoint the person deliberately disabled isn't a problem.
+  try {
+    const settings = await getSettings();
+    if (settings.crowdReportEnabled && settings.crowdReportEndpoint) {
+      const base = crowdReportsBaseUrl(settings.crowdReportEndpoint);
+      const start = Date.now();
+      const res = await fetchT(base, {}, 8000);
+      results.push({ name: 'Crowd-report Worker', ok: res.ok, detail: res.ok ? `HTTP ${res.status}, ${Date.now() - start}ms` : `HTTP ${res.status}` });
+    } else {
+      results.push({ name: 'Crowd-report Worker', ok: true, detail: 'Skipped — reporting is off' });
+    }
+  } catch (err) {
+    results.push({ name: 'Crowd-report Worker', ok: false, detail: err.message || 'unreachable' });
+  }
+
+  return results;
+}
 
 // The crowd-report feature only had value if people actually used it, and
 // requiring someone to manually notice "hm, this header looks unfamiliar"
@@ -1359,7 +1426,7 @@ async function fetchCrowdReports(providerId) {
 // This replaces that manual-noticing step with automatic detection: every
 // response header is checked against a known-header list built from (a)
 // standard HTTP/CDN headers and (b) every header name already referenced
-// across all 24 provider files. Anything left over — but ONLY on domains
+// across all 26 provider files. Anything left over — but ONLY on domains
 // where a provider was actually detected — is surfaced as a one-click
 // "report this?" suggestion. Nothing is ever sent without the person
 // clicking to confirm; this only removes the burden of having to notice
@@ -2234,6 +2301,14 @@ chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => {
       .catch(e => sendResponse({ checked: false, reason: e.message }));
     return true;
   }
+  if (msg.action === 'checkOnboarding') {
+    chrome.storage.local.get('show_onboarding').then(r => sendResponse({ show: !!r.show_onboarding }));
+    return true;
+  }
+  if (msg.action === 'dismissOnboarding') {
+    chrome.storage.local.remove('show_onboarding').then(() => sendResponse({ ok: true }));
+    return true;
+  }
   if (msg.action === 'getSettings') {
     getSettings().then(s => sendResponse(s));
     return true;
@@ -2251,6 +2326,10 @@ chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => {
   if (msg.action === 'submitCrowdReport') {
     maybeSubmitCrowdReport(msg.providerId, msg.notes ? [msg.notes] : [], msg.domain)
       .then(() => sendResponse({ ok: true }));
+    return true;
+  }
+  if (msg.action === 'runDiagnostics') {
+    runDiagnostics().then(results => sendResponse({ results }));
     return true;
   }
   if (msg.action === 'testCrowdEndpoint') {
@@ -2463,8 +2542,11 @@ chrome.alarms.onAlarm.addListener(alarm => {
 ensureWatchlistAlarm();
 
 // ── B5: Right-click "Scan this domain/link" context menu ──────
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener(details => {
   try {
+    if (details.reason === 'install') {
+      chrome.storage.local.set({ show_onboarding: true }).catch(() => {});
+    }
     chrome.contextMenus.create({
       id: 'cdnwaf-scan-page',
       title: 'Scan this domain with CDN/WAF Detector',

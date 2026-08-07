@@ -413,3 +413,24 @@ Root cause found: `ambientHeadersListener()`'s `chrome.action.setBadgeText()`/`s
 
 ### Added — "Test connection" button for the crowd-report endpoint
 Directly motivated by real friction from earlier in this project: multiple round-trips were spent just figuring out whether the Worker was actually deployed and reachable. New button next to the endpoint field in Settings does a plain `GET` against the endpoint's dashboard root (never a fake `POST /report` — this doesn't write any test data into real report storage) and reports back reachable/unreachable with the HTTP status or error, in place.
+
+## v9.5.18 — 5-item improvement list, all delivered
+
+Requested list from last round, all implemented:
+
+### 1. Sparkline chart on the Compare page
+Same hand-built SVG approach as the Timeline view's chart (v9.5.16), applied to `compare.js`: after both domains are scanned, a 2-line trend chart plots detected-provider count over time for domain A vs domain B (using `getSnapshotHistory`, already stored — no new backend). Individual per-provider lines weren't used here (26 lines × 2 domains would be unreadable) — provider count is the meaningful comparison at this zoom level. Hidden when either domain has fewer than 2 stored snapshots to trend from.
+
+### 2. First-run onboarding card
+A lightweight, dismissible inline card (not a blocking modal) shown once on fresh installs (`chrome.runtime.onInstalled` with `reason === 'install'`, not on updates), covering the core workflow in 4 short steps. One click to dismiss and it's gone permanently — never gets in the way of someone who just wants to start scanning immediately.
+
+### 3. Diagnostics ("Run diagnostics" button in Settings)
+Checks, in one pass: all 3 DoH resolvers' reachability and latency, IP-range cache freshness, a real local-storage read/write round-trip, and the crowd-report Worker's reachability (skipped if reporting is off). Directly motivated by the real friction earlier in this project — figuring out "is X actually working" one piece at a time by trial and error.
+
+### 4. CSV import for batch scanning
+Turned out this already existed (`csvUpload` in `batch.html`/`batch.js`) — nothing to add. Found and fixed two real bugs while checking it, though: `batch.html`, `compare.html`, and `sidepanel.html` still had the same hardcoded "v9.1" the popup header had (fixed back in v9.5.6, but missed in these three files) — now all four read the version dynamically from the manifest. Also removed genuinely dead code in `batch.js`: a block reading `batch_prefill_domains` from storage, left over from a "batch from bookmarks/tabs" feature removed back in v9.5.0 — nothing has written that key since, and `runStorageMigration()` actively deletes it on every startup anyway.
+
+### 5. Unit tests for provider scoring
+New `test/run-tests.js` — runs with plain `node test/run-tests.js`, no dependencies, no build step. It polyfills the `self` global providers register onto and evaluates the actual shipped provider files directly (not a reimplementation), then checks: empty signals never claim detection, scores are always clamped to [0, 100] even with every boolean signal forced true, every provider has a valid name/color, and no two providers share an id. Verified this isn't a rubber-stamp test suite by deliberately injecting a scoring bug into a copy of `cloudflare.js`, confirming the suite caught it (182/183 passed, the injected bug flagged), then restoring the real file and confirming 183/183 again.
+
+All 26 providers currently pass all checks (183/183).
