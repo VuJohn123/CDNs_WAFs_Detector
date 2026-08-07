@@ -44,6 +44,13 @@ git push
 
 if errorlevel 1 (
   echo.
+  echo First push has no upstream set yet -- retrying with --set-upstream...
+  for /f "usebackq delims=" %%b in (`git rev-parse --abbrev-ref HEAD`) do set BRANCH=%%b
+  git push --set-upstream origin !BRANCH!
+)
+
+if errorlevel 1 (
+  echo.
   echo ==============================================================
   echo  Push failed. Common causes:
   echo   - Not logged in / no credential helper configured.
